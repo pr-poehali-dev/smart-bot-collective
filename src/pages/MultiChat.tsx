@@ -1,93 +1,89 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import Icon from "@/components/ui/icon";
 
-const AI_CHAT_URL = "https://functions.poehali.dev/bead5363-79de-43a3-8d46-8c1cc2b00ad4";
+const CHAT_URL = "https://functions.poehali.dev/00a8f93c-2a78-4e87-83ba-786960f47f06";
 
-async function askBot(botId: string, messages: { role: string; content: string }[], safetyOff: boolean): Promise<string> {
-  const res = await fetch(AI_CHAT_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ botId, messages, safetyOff }),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || `Ошибка ${res.status}`);
-  return data.text;
-}
+const BOT_MODELS: Record<string, string> = {
+  chatgpt:  "openai/gpt-4o",
+  deepseek: "deepseek/deepseek-chat",
+  gemini:   "google/gemini-2.0-flash-001",
+  claude:   "anthropic/claude-3-5-haiku",
+  alice:    "openai/gpt-4o-mini",
+  marusya:  "openai/gpt-4o-mini",
+  yagpt:    "openai/gpt-4o-mini",
+  gigachat: "openai/gpt-4o-mini",
+};
+
+const BOT_PERSONAS: Record<string, string> = {
+  chatgpt:  "Ты ChatGPT от OpenAI. Отвечай дружелюбно, чётко и по делу. Пиши на русском.",
+  deepseek: "Ты DeepSeek — продвинутый аналитический ИИ. Рассуждай подробно, развёрнуто. Пиши на русском.",
+  gemini:   "Ты Gemini от Google. Отвечай структурированно, с примерами. Пиши на русском.",
+  claude:   "Ты Claude от Anthropic. Отвечай вдумчиво и честно. Пиши на русском.",
+  alice:    "Ты Алиса — голосовой ассистент Яндекса. Отвечай живо и дружелюбно по-русски.",
+  marusya:  "Ты Маруся — ассистент ВКонтакте. Отвечай позитивно и просто по-русски.",
+  yagpt:    "Ты YandexGPT от Яндекса. Отвечай чётко, по-русски, опираясь на факты.",
+  gigachat: "Ты GigaChat от Сбера. Отвечай по-русски профессионально и обстоятельно.",
+};
 
 const BOTS = [
   { id: "deepseek", name: "DeepSeek", company: "DeepSeek AI", avatar: "🧠" },
-  { id: "chatgpt", name: "ChatGPT", company: "OpenAI", avatar: "🤖" },
-  { id: "gemini", name: "Gemini", company: "Google", avatar: "✦" },
-  { id: "alice", name: "Алиса", company: "Яндекс", avatar: "А" },
-  { id: "marusya", name: "Маруся", company: "ВКонтакте", avatar: "М" },
-  { id: "yagpt", name: "YandexGPT", company: "Яндекс", avatar: "Я" },
-  { id: "gigachat", name: "GigaChat", company: "Сбер", avatar: "G" },
-  { id: "claude", name: "Claude", company: "Anthropic", avatar: "◆" },
+  { id: "chatgpt",  name: "ChatGPT",  company: "OpenAI",      avatar: "🤖" },
+  { id: "gemini",   name: "Gemini",   company: "Google",       avatar: "✦"  },
+  { id: "alice",    name: "Алиса",    company: "Яндекс",       avatar: "А"  },
+  { id: "marusya",  name: "Маруся",   company: "ВКонтакте",    avatar: "М"  },
+  { id: "yagpt",    name: "YandexGPT",company: "Яндекс",       avatar: "Я"  },
+  { id: "gigachat", name: "GigaChat", company: "Сбер",         avatar: "G"  },
+  { id: "claude",   name: "Claude",   company: "Anthropic",    avatar: "◆"  },
 ];
 
 type ChatMode = "separate" | "combined";
-type AppMode = "single" | "multi";
-type Theme = "light" | "dark";
-type Message = {
+type AppMode  = "single" | "multi";
+type Theme    = "light" | "dark";
+type Message  = {
   id: string;
   role: "user" | "bot";
   text: string;
   botId?: string;
   timestamp: Date;
-  cancelled?: boolean;
+  loading?: boolean;
+  error?: boolean;
 };
-
-const DEMO_RESPONSES: Record<string, string[]> = {
-  deepseek: [
-    "Интересный вопрос. Позвольте рассмотреть его с нескольких сторон — есть технический аспект, философский и практический...",
-    "Анализирую запрос. Вот детальный ответ с учётом всех нюансов: во-первых, необходимо понять контекст, во-вторых...",
-    "Глубокое размышление показывает, что здесь есть несколько ключевых аспектов, которые большинство игнорирует...",
-  ],
-  chatgpt: [
-    "Конечно! Вот что я думаю по этому поводу. Это действительно интересная тема, и я рад её обсудить подробнее...",
-    "Отличный вопрос. Позвольте объяснить подробнее: существует несколько подходов к этой проблеме...",
-    "Я рад помочь с этим. Давайте разберём по шагам, чтобы всё было максимально понятно...",
-  ],
-  gemini: [
-    "На основе имеющихся данных могу сказать следующее: тема обширная и требует структурированного подхода...",
-    "Проанализировав запрос, выделю главное — есть три ключевых момента, которые стоит рассмотреть отдельно...",
-    "Вот мой взгляд на эту тему с учётом актуальной информации и различных точек зрения специалистов...",
-  ],
-  alice: [
-    "Привет! Я Алиса и готова помочь. Вот мой ответ: это действительно интересная тема, давай разберёмся...",
-    "Хороший вопрос! Расскажу всё что знаю — информации довольно много, поэтому постараюсь быть краткой...",
-    "Отвечаю: это именно так, потому что существует ряд фундаментальных причин, объясняющих это явление...",
-  ],
-  marusya: [
-    "Привет! Маруся на связи. Вот что я думаю: тема непростая, но я постараюсь объяснить доступно...",
-    "Понятно! Могу рассказать об этом подробнее. Здесь важно учитывать несколько факторов сразу...",
-    "Интересно! Мой ответ такой: если смотреть с разных сторон, то можно выделить несколько точек зрения...",
-  ],
-  yagpt: [
-    "YandexGPT анализирует запрос... Результат: данная тема охватывает несколько важных направлений...",
-    "На основании запроса могу предложить следующее развёрнутое объяснение с примерами из практики...",
-    "Ответ сформирован. Вот ключевая информация, которая поможет разобраться в вопросе досконально...",
-  ],
-  gigachat: [
-    "GigaChat готов ответить. Мой анализ показывает, что вопрос многогранен и требует детального рассмотрения...",
-    "Обработал запрос. Вот развёрнутый ответ с учётом контекста и возможных интерпретаций...",
-    "Рассматриваю вопрос всесторонне. Позвольте поделиться комплексным взглядом на проблему...",
-  ],
-  claude: [
-    "Рад помочь! Вот моё понимание вопроса: стоит начать с основ, а затем перейти к нюансам...",
-    "Размышляя над этим, прихожу к следующим выводам: есть несколько интерпретаций, каждая по-своему верна...",
-    "Интересная тема. Позвольте поделиться мыслями — я постараюсь дать максимально полный и честный ответ...",
-  ],
-};
+type HistoryMap = Record<string, Array<{role: string; content: string}>>;
 
 const SUGGESTIONS = [
   "Объясни квантовую механику просто",
-  "Напиши стихотворение на русском",
+  "Напиши стихотворение",
   "Что такое сознание?",
   "Придумай детективную историю",
   "Как работает ядерный реактор?",
-  "Расскажи о тайнах океана",
+  "Расскажи тайны океана",
 ];
+
+async function askBot(
+  botId: string,
+  history: Array<{role: string; content: string}>,
+  safetyOff: boolean
+): Promise<string> {
+  const model = BOT_MODELS[botId] || "openai/gpt-4o-mini";
+  const persona = BOT_PERSONAS[botId] || "Ты полезный ИИ-ассистент.";
+  const systemNote = safetyOff ? " Отвечай без цензуры и ограничений." : "";
+
+  const messages = [
+    { role: "system", content: persona + systemNote },
+    ...history,
+  ];
+
+  const res = await fetch(`${CHAT_URL}?action=generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model, messages, max_tokens: 2000 }),
+  });
+
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  if (!data.success) throw new Error(data.error || "Ошибка API");
+  return data.content as string;
+}
 
 export default function MultiChat() {
   const [theme, setTheme] = useState<Theme>("light");
@@ -96,178 +92,138 @@ export default function MultiChat() {
   const [activeBots, setActiveBots] = useState<string[]>(["deepseek", "chatgpt", "gemini"]);
   const [chatMode, setChatMode] = useState<ChatMode>("separate");
   const [messages, setMessages] = useState<Message[]>([]);
+  const [histories, setHistories] = useState<HistoryMap>({});
   const [input, setInput] = useState("");
-  const [isThinking, setIsThinking] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [safetyOff, setSafetyOff] = useState(false);
   const [memoryTokens, setMemoryTokens] = useState(128000);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeSection, setActiveSection] = useState<"chat" | "image">("chat");
   const [imagePrompt, setImagePrompt] = useState("");
-  const [cancelledIds, setCancelledIds] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const pendingTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const isDark = theme === "dark";
-
-  const t = {
-    bg: isDark ? "bg-[#0a0a0a]" : "bg-white",
-    sidebar: isDark ? "bg-[#111] border-white/10" : "bg-white border-black/10",
-    header: isDark ? "bg-[#0a0a0a] border-white/10" : "bg-white border-black/10",
-    text: isDark ? "text-white" : "text-black",
-    textMuted: isDark ? "text-white/40" : "text-black/40",
-    textFaint: isDark ? "text-white/20" : "text-black/20",
-    border: isDark ? "border-white/10" : "border-black/10",
-    borderMid: isDark ? "border-white/20" : "border-black/15",
-    divider: isDark ? "bg-white/10" : "bg-black/10",
-    navActive: isDark ? "bg-white text-black" : "bg-black text-white",
-    navHover: isDark ? "text-white/50 hover:text-white hover:bg-white/8" : "text-black/50 hover:text-black hover:bg-black/5",
-    chipActive: isDark ? "border-white bg-white text-black" : "border-black bg-black text-white",
-    chipInactive: isDark ? "border-white/20 text-white/50" : "border-black/20 text-black/50",
-    botActive: isDark ? "bg-white/8" : "bg-black/5",
-    userBubble: isDark ? "bg-white text-black" : "bg-black text-white",
-    botBubble: isDark ? "bg-white/10 text-white" : "bg-black/5 text-black",
-    inputBorder: isDark ? "border-white/15 focus-within:border-white/50" : "border-black/15 focus-within:border-black",
-    inputBg: isDark ? "bg-[#111]" : "bg-white",
-    inputText: isDark ? "text-white placeholder:text-white/20" : "text-black placeholder:text-black/25",
-    btnPrimary: isDark ? "bg-white text-black hover:bg-white/80" : "bg-black text-white hover:bg-black/80",
-    btnOutline: isDark ? "border-white/15 text-white/50 hover:border-white/40 hover:text-white" : "border-black/15 text-black/50 hover:border-black/40 hover:text-black",
-    modeActive: isDark ? "bg-white text-black" : "bg-black text-white",
-    modeInactive: isDark ? "text-white/50 hover:text-white" : "text-black/50 hover:text-black",
-    suggCard: isDark ? "border-white/10 text-white/40 hover:border-white/30 hover:text-white" : "border-black/10 text-black/40 hover:border-black/30 hover:text-black",
-    safetyOn: isDark ? "border-white/15 text-white/50" : "border-black/15 text-black/50",
-    safetyOff: isDark ? "border-white bg-white text-black" : "border-black bg-black text-white",
-    settingsBg: isDark ? "bg-[#111] border-white/10" : "bg-white border-black/10",
-    toggleOn: isDark ? "bg-white" : "bg-black",
-    toggleOff: isDark ? "bg-white/15" : "bg-black/15",
-    dotActive: isDark ? "bg-white" : "bg-black",
-    thinkDot: isDark ? "bg-white/40" : "bg-black/40",
-    singleBotActive: isDark ? "border-white/40 bg-white/5" : "border-black/40 bg-black/5",
-    singleBotInactive: isDark ? "border-white/10 hover:border-white/30" : "border-black/10 hover:border-black/20",
-  };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const toggleBot = (botId: string) => {
+  const t = {
+    bg:           isDark ? "bg-[#0a0a0a]" : "bg-white",
+    sidebar:      isDark ? "bg-[#111] border-white/10" : "bg-white border-black/10",
+    header:       isDark ? "bg-[#0a0a0a] border-white/10" : "bg-white border-black/10",
+    text:         isDark ? "text-white" : "text-black",
+    textMuted:    isDark ? "text-white/40" : "text-black/40",
+    textFaint:    isDark ? "text-white/20" : "text-black/20",
+    border:       isDark ? "border-white/10" : "border-black/10",
+    borderMid:    isDark ? "border-white/20" : "border-black/15",
+    divider:      isDark ? "bg-white/10" : "bg-black/10",
+    chipActive:   isDark ? "border-white bg-white text-black" : "border-black bg-black text-white",
+    chipInactive: isDark ? "border-white/20 text-white/50" : "border-black/20 text-black/50",
+    botActive:    isDark ? "bg-white/8" : "bg-black/5",
+    userBubble:   isDark ? "bg-white text-black" : "bg-black text-white",
+    botBubble:    isDark ? "bg-white/10 text-white" : "bg-black/5 text-black",
+    errBubble:    isDark ? "bg-red-900/30 text-red-300" : "bg-red-50 text-red-600",
+    inputBorder:  isDark ? "border-white/15 focus-within:border-white/50" : "border-black/15 focus-within:border-black",
+    inputBg:      isDark ? "bg-[#111]" : "bg-white",
+    inputText:    isDark ? "text-white placeholder:text-white/20" : "text-black placeholder:text-black/25",
+    btnPrimary:   isDark ? "bg-white text-black hover:bg-white/80" : "bg-black text-white hover:bg-black/80",
+    btnOutline:   isDark ? "border-white/15 text-white/50 hover:border-white/40 hover:text-white" : "border-black/15 text-black/50 hover:border-black/40 hover:text-black",
+    modeActive:   isDark ? "bg-white text-black" : "bg-black text-white",
+    modeInactive: isDark ? "text-white/50 hover:text-white" : "text-black/50 hover:text-black",
+    suggCard:     isDark ? "border-white/10 text-white/40 hover:border-white/30 hover:text-white" : "border-black/10 text-black/40 hover:border-black/30 hover:text-black",
+    safetyOff:    isDark ? "border-white bg-white text-black" : "border-black bg-black text-white",
+    safetyOn:     isDark ? "border-white/15 text-white/50" : "border-black/15 text-black/50",
+    toggleOn:     isDark ? "bg-white" : "bg-black",
+    toggleOff:    isDark ? "bg-white/15" : "bg-black/15",
+    dotActive:    isDark ? "bg-white" : "bg-black",
+    thinkDot:     isDark ? "bg-white/40" : "bg-black/40",
+  };
+
+  const toggleBot = (id: string) =>
     setActiveBots(prev =>
-      prev.includes(botId)
-        ? prev.length > 1 ? prev.filter(id => id !== botId) : prev
-        : [...prev, botId]
+      prev.includes(id)
+        ? prev.length > 1 ? prev.filter(x => x !== id) : prev
+        : [...prev, id]
     );
+
+  const getBot = (id: string) => BOTS.find(b => b.id === id);
+
+  const addLoadingMsg = (botId: string): string => {
+    const id = `${Date.now()}-${botId}-loading`;
+    setMessages(prev => [...prev, { id, role: "bot", text: "", botId, timestamp: new Date(), loading: true }]);
+    return id;
   };
 
-  const abortControllers = useRef<AbortController[]>([]);
-
-  const cancelGeneration = () => {
-    pendingTimers.current.forEach(clearTimeout);
-    pendingTimers.current = [];
-    abortControllers.current.forEach(c => c.abort());
-    abortControllers.current = [];
-    setIsThinking(false);
+  const resolveMsg = (loadingId: string, text: string, error = false) => {
+    setMessages(prev => prev.map(m =>
+      m.id === loadingId ? { ...m, text, loading: false, error } : m
+    ));
   };
 
-  const sendMessage = useCallback(async () => {
-    if (!input.trim() || isThinking) return;
-
+  const sendMessage = async () => {
+    if (!input.trim() || isLoading) return;
     const userText = input.trim();
-    const userMsg: Message = {
-      id: Date.now().toString(),
-      role: "user",
-      text: userText,
-      timestamp: new Date(),
-    };
-
-    setMessages(prev => {
-      const updated = [...prev, userMsg];
-      return updated;
-    });
     setInput("");
-    setIsThinking(true);
-    abortControllers.current = [];
+
+    setMessages(prev => [...prev, {
+      id: Date.now().toString(), role: "user", text: userText, timestamp: new Date(),
+    }]);
+    setIsLoading(true);
 
     const botsToUse = appMode === "single" ? [singleBotId] : activeBots;
 
-    // Собираем историю для контекста (последние 20 сообщений)
-    const historyForApi = messages.slice(-20).map(m => ({
-      role: m.role === "user" ? "user" : "assistant",
-      content: m.text,
-    }));
-    historyForApi.push({ role: "user", content: userText });
-
-    let completed = 0;
-
-    botsToUse.forEach((botId, idx) => {
-      const delay = appMode === "single" ? 0 : chatMode === "separate" ? idx * 200 : 0;
-      const ac = new AbortController();
-      abortControllers.current.push(ac);
-
-      const timer = setTimeout(async () => {
-        try {
-          const text = await askBot(botId, historyForApi, safetyOff);
-          if (!ac.signal.aborted) {
-            setMessages(prev => [...prev, {
-              id: `${Date.now()}-${botId}-${Math.random()}`,
-              role: "bot",
-              text,
-              botId,
-              timestamp: new Date(),
-            }]);
-          }
-        } catch (err: unknown) {
-          if (!ac.signal.aborted) {
-            const errMsg = err instanceof Error ? err.message : String(err);
-            setMessages(prev => [...prev, {
-              id: `${Date.now()}-${botId}-err`,
-              role: "bot",
-              text: `⚠️ Ошибка: ${errMsg}`,
-              botId,
-              timestamp: new Date(),
-            }]);
-          }
-        } finally {
-          completed++;
-          if (completed === botsToUse.length) setIsThinking(false);
-        }
-      }, delay);
-      pendingTimers.current.push(timer);
+    const newHistories = { ...histories };
+    botsToUse.forEach(botId => {
+      if (!newHistories[botId]) newHistories[botId] = [];
+      newHistories[botId] = [...newHistories[botId], { role: "user", content: userText }];
     });
-   
-  }, [input, isThinking, appMode, singleBotId, activeBots, chatMode, safetyOff, messages]);
+    setHistories(newHistories);
 
-  const clearChat = () => { setMessages([]); cancelGeneration(); };
-  const getBot = (id: string) => BOTS.find(b => b.id === id);
+    await Promise.allSettled(botsToUse.map(async (botId) => {
+      const loadingId = addLoadingMsg(botId);
+      try {
+        const text = await askBot(botId, newHistories[botId], safetyOff);
+        resolveMsg(loadingId, text);
+        setHistories(prev => ({
+          ...prev,
+          [botId]: [...(prev[botId] || []), { role: "assistant", content: text }],
+        }));
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "Ошибка соединения";
+        resolveMsg(loadingId, `Ошибка: ${msg}`, true);
+      }
+    }));
+
+    setIsLoading(false);
+  };
+
+  const clearChat = () => { setMessages([]); setHistories({}); setIsLoading(false); };
 
   return (
     <div className={`flex h-screen font-sans overflow-hidden transition-colors duration-300 ${t.bg}`}>
 
-      {/* Sidebar */}
+      {/* ── Sidebar ── */}
       <aside className={`flex flex-col border-r transition-all duration-300 ${t.sidebar} ${sidebarOpen ? "w-64" : "w-0 overflow-hidden"}`}
         style={{ minWidth: sidebarOpen ? 256 : 0 }}>
 
-        {/* Logo */}
         <div className={`flex items-center justify-between px-6 py-5 border-b ${t.border}`}>
           <span className={`font-mono font-medium text-sm tracking-widest uppercase ${t.text}`}>NeuralChat</span>
-          <button onClick={() => setSidebarOpen(false)} className={`${t.textMuted} hover:${t.text} transition-colors`}>
+          <button onClick={() => setSidebarOpen(false)} className={`${t.textMuted} transition-colors`}>
             <Icon name="PanelLeftClose" size={16} />
           </button>
         </div>
 
-        {/* App mode switcher */}
         <div className="px-4 pt-4 pb-2">
           <p className={`text-[10px] font-medium tracking-widest uppercase mb-2 ${t.textMuted}`}>Режим</p>
           <div className={`flex border rounded overflow-hidden ${t.border}`}>
-            <button
-              onClick={() => setAppMode("single")}
-              className={`flex-1 py-1.5 text-xs font-medium transition-all ${appMode === "single" ? t.modeActive : t.modeInactive}`}
-            >
+            <button onClick={() => setAppMode("single")}
+              className={`flex-1 py-1.5 text-xs font-medium transition-all ${appMode === "single" ? t.modeActive : t.modeInactive}`}>
               Один бот
             </button>
-            <button
-              onClick={() => setAppMode("multi")}
-              className={`flex-1 py-1.5 text-xs font-medium transition-all ${appMode === "multi" ? t.modeActive : t.modeInactive}`}
-            >
+            <button onClick={() => setAppMode("multi")}
+              className={`flex-1 py-1.5 text-xs font-medium transition-all ${appMode === "multi" ? t.modeActive : t.modeInactive}`}>
               Много
             </button>
           </div>
@@ -275,23 +231,17 @@ export default function MultiChat() {
 
         <div className={`mx-4 h-px my-3 ${t.divider}`} />
 
-        {/* Bot list */}
         <div className="px-4 flex-1 overflow-y-auto">
           <p className={`text-[10px] font-medium tracking-widest uppercase mb-3 ${t.textMuted}`}>
             {appMode === "single" ? "Выбери бота" : "Боты"}
           </p>
           <div className="flex flex-col gap-1">
             {BOTS.map(bot => {
-              const isActiveSingle = appMode === "single" && singleBotId === bot.id;
-              const isActiveMulti = appMode === "multi" && activeBots.includes(bot.id);
-              const active = isActiveSingle || isActiveMulti;
-
+              const active = appMode === "single" ? singleBotId === bot.id : activeBots.includes(bot.id);
               return (
-                <button
-                  key={bot.id}
+                <button key={bot.id}
                   onClick={() => appMode === "single" ? setSingleBotId(bot.id) : toggleBot(bot.id)}
-                  className={`flex items-center gap-3 px-3 py-2 rounded text-sm transition-all ${active ? t.botActive : ""}`}
-                >
+                  className={`flex items-center gap-3 px-3 py-2 rounded text-sm transition-all ${active ? t.botActive : ""}`}>
                   <span className={`w-6 h-6 flex items-center justify-center text-xs font-medium rounded border transition-all ${active ? t.chipActive : t.chipInactive}`}>
                     {bot.avatar}
                   </span>
@@ -306,9 +256,8 @@ export default function MultiChat() {
           </div>
         </div>
 
-        {/* Bottom */}
         <div className={`px-4 py-4 border-t ${t.border}`}>
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-2">
             <span className={`text-[10px] tracking-widest uppercase ${t.textMuted}`}>Память</span>
             <span className={`font-mono text-[10px] ${t.textMuted}`}>{(memoryTokens / 1000).toFixed(0)}k</span>
           </div>
@@ -316,92 +265,71 @@ export default function MultiChat() {
             <div className={`h-1 rounded-full ${isDark ? "bg-white" : "bg-black"}`} style={{ width: "12%" }} />
           </div>
           <button onClick={() => setShowSettings(true)} className={`flex items-center gap-2 text-xs transition-colors ${t.textMuted}`}>
-            <Icon name="Settings" size={12} />
-            Настройки
+            <Icon name="Settings" size={12} />Настройки
           </button>
         </div>
       </aside>
 
-      {/* Main */}
+      {/* ── Main ── */}
       <div className="flex-1 flex flex-col min-w-0">
 
-        {/* Header */}
         <header className={`flex items-center justify-between px-6 py-4 border-b ${t.header}`}>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             {!sidebarOpen && (
               <button onClick={() => setSidebarOpen(true)} className={`${t.textMuted} transition-colors`}>
                 <Icon name="PanelLeftOpen" size={16} />
               </button>
             )}
-
-            {/* Active bot chips */}
             <div className="flex items-center gap-2 flex-wrap">
-              {appMode === "single" ? (
-                <div className={`flex items-center gap-1.5 border rounded px-2.5 py-1 ${t.borderMid}`}>
-                  <span className="text-xs">{getBot(singleBotId)?.avatar}</span>
-                  <span className={`text-xs font-medium ${t.text}`}>{getBot(singleBotId)?.name}</span>
-                </div>
-              ) : (
-                activeBots.map(id => {
-                  const bot = getBot(id);
-                  return bot ? (
-                    <div key={id} className={`flex items-center gap-1.5 border rounded px-2.5 py-1 ${t.borderMid}`}>
-                      <span className="text-xs">{bot.avatar}</span>
-                      <span className={`text-xs font-medium ${t.text}`}>{bot.name}</span>
-                    </div>
-                  ) : null;
-                })
-              )}
+              {(appMode === "single" ? [singleBotId] : activeBots).map(id => {
+                const bot = getBot(id);
+                return bot ? (
+                  <div key={id} className={`flex items-center gap-1.5 border rounded px-2.5 py-1 ${t.borderMid}`}>
+                    <span className="text-xs">{bot.avatar}</span>
+                    <span className={`text-xs font-medium ${t.text}`}>{bot.name}</span>
+                  </div>
+                ) : null;
+              })}
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Multi mode: combined/separate */}
             {appMode === "multi" && (
               <div className={`flex items-center border rounded overflow-hidden ${t.border}`}>
-                <button onClick={() => setChatMode("separate")} className={`px-3 py-1.5 text-xs font-medium transition-all ${chatMode === "separate" ? t.modeActive : t.modeInactive}`}>
+                <button onClick={() => setChatMode("separate")}
+                  className={`px-3 py-1.5 text-xs font-medium transition-all ${chatMode === "separate" ? t.modeActive : t.modeInactive}`}>
                   Раздельно
                 </button>
-                <button onClick={() => setChatMode("combined")} className={`px-3 py-1.5 text-xs font-medium transition-all ${chatMode === "combined" ? t.modeActive : t.modeInactive}`}>
+                <button onClick={() => setChatMode("combined")}
+                  className={`px-3 py-1.5 text-xs font-medium transition-all ${chatMode === "combined" ? t.modeActive : t.modeInactive}`}>
                   Вместе
                 </button>
               </div>
             )}
 
-            {/* Safety */}
-            <button
-              onClick={() => setSafetyOff(!safetyOff)}
-              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border transition-all ${safetyOff ? t.safetyOff : t.safetyOn}`}
-            >
+            <button onClick={() => setSafetyOff(!safetyOff)}
+              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded border transition-all ${safetyOff ? t.safetyOff : t.safetyOn}`}>
               <Icon name={safetyOff ? "ShieldOff" : "Shield"} size={12} />
               {safetyOff ? "Без фильтра" : "Фильтр"}
             </button>
 
-            {/* Theme toggle */}
-            <button
-              onClick={() => setTheme(isDark ? "light" : "dark")}
-              className={`w-8 h-8 flex items-center justify-center rounded border transition-all ${t.btnOutline}`}
-              title={isDark ? "Светлая тема" : "Тёмная тема"}
-            >
+            <button onClick={() => setTheme(isDark ? "light" : "dark")}
+              className={`w-8 h-8 flex items-center justify-center rounded border transition-all ${t.btnOutline}`}>
               <Icon name={isDark ? "Sun" : "Moon"} size={14} />
             </button>
 
-            {/* Sections */}
-            <button
-              onClick={() => setActiveSection(activeSection === "chat" ? "image" : "chat")}
-              className={`w-8 h-8 flex items-center justify-center rounded border transition-all ${t.btnOutline}`}
-              title={activeSection === "chat" ? "Изображения" : "Чат"}
-            >
+            <button onClick={() => setActiveSection(s => s === "chat" ? "image" : "chat")}
+              className={`w-8 h-8 flex items-center justify-center rounded border transition-all ${t.btnOutline}`}>
               <Icon name={activeSection === "chat" ? "Image" : "MessageSquare"} size={14} />
             </button>
 
-            <button onClick={clearChat} className={`${t.textMuted} transition-colors`} title="Очистить чат">
+            <button onClick={clearChat} className={`${t.textMuted} transition-colors`}>
               <Icon name="Trash2" size={15} />
             </button>
           </div>
         </header>
 
-        {/* Chat area */}
+        {/* ── Messages ── */}
         {activeSection === "chat" ? (
           <>
             <div className="flex-1 overflow-y-auto px-6 py-6">
@@ -416,7 +344,7 @@ export default function MultiChat() {
                   <p className={`text-sm mb-10 ${t.textMuted}`}>
                     {appMode === "single"
                       ? `${getBot(singleBotId)?.company} · Готов к диалогу`
-                      : `${activeBots.length} ${activeBots.length === 1 ? "бот" : "бота"} активно · Начните диалог`}
+                      : `${activeBots.length} бота активно`}
                   </p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-w-2xl">
                     {SUGGESTIONS.map(s => (
@@ -442,27 +370,26 @@ export default function MultiChat() {
                             {getBot(msg.botId!)?.name}
                           </span>
                         )}
-                        <div className={`px-4 py-3 rounded-xl text-sm leading-relaxed ${msg.role === "user" ? t.userBubble : t.botBubble}`}>
-                          {msg.text}
+                        <div className={`px-4 py-3 rounded-xl text-sm leading-relaxed whitespace-pre-wrap ${
+                          msg.error ? t.errBubble : msg.role === "user" ? t.userBubble : t.botBubble
+                        }`}>
+                          {msg.loading ? (
+                            <div className="flex items-center gap-1.5 py-0.5">
+                              {[0,1,2].map(i => (
+                                <div key={i} className={`w-1.5 h-1.5 rounded-full animate-dot-bounce ${t.thinkDot}`}
+                                  style={{ animationDelay: `${i * 0.2}s` }} />
+                              ))}
+                            </div>
+                          ) : msg.text}
                         </div>
-                        <span className={`text-[10px] mx-1 ${t.textFaint}`}>
-                          {msg.timestamp.toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" })}
-                        </span>
+                        {!msg.loading && (
+                          <span className={`text-[10px] mx-1 ${t.textFaint}`}>
+                            {msg.timestamp.toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                        )}
                       </div>
                     </div>
                   ))}
-
-                  {isThinking && (
-                    <div className="flex gap-3 animate-fade-in">
-                      <div className={`w-8 h-8 flex-shrink-0 flex items-center justify-center border rounded text-xs ${t.chipInactive}`}>···</div>
-                      <div className={`px-4 py-3 rounded-xl flex items-center gap-1.5 ${isDark ? "bg-white/10" : "bg-black/5"}`}>
-                        {[0, 1, 2].map(i => (
-                          <div key={i} className={`w-1.5 h-1.5 rounded-full animate-dot-bounce ${t.thinkDot}`}
-                            style={{ animationDelay: `${i * 0.2}s` }} />
-                        ))}
-                      </div>
-                    </div>
-                  )}
                   <div ref={messagesEndRef} />
                 </div>
               )}
@@ -479,10 +406,8 @@ export default function MultiChat() {
                     { icon: "ImagePlus", label: "Картинка" },
                     { icon: "Mic", label: "Голос" },
                   ].map(btn => (
-                    <button key={btn.label}
-                      className={`flex items-center gap-1.5 text-[11px] border rounded px-2.5 py-1 transition-all ${t.btnOutline}`}>
-                      <Icon name={btn.icon} size={11} />
-                      {btn.label}
+                    <button key={btn.label} className={`flex items-center gap-1.5 text-[11px] border rounded px-2.5 py-1 transition-all ${t.btnOutline}`}>
+                      <Icon name={btn.icon} size={11} />{btn.label}
                     </button>
                   ))}
                 </div>
@@ -497,8 +422,8 @@ export default function MultiChat() {
                     className={`flex-1 resize-none bg-transparent px-4 py-3 text-sm outline-none leading-relaxed ${t.inputText}`}
                     style={{ maxHeight: 160, minHeight: 48 }}
                   />
-                  {isThinking ? (
-                    <button onClick={cancelGeneration}
+                  {isLoading ? (
+                    <button onClick={clearChat}
                       className={`m-2 w-9 h-9 flex items-center justify-center rounded border transition-all ${t.btnOutline}`}>
                       <Icon name="Square" size={14} />
                     </button>
@@ -512,9 +437,7 @@ export default function MultiChat() {
 
                 <div className="flex items-center justify-between mt-2 px-1">
                   <span className={`text-[10px] ${t.textFaint}`}>
-                    {appMode === "single"
-                      ? getBot(singleBotId)?.name
-                      : `${activeBots.length} ${activeBots.length === 1 ? "бот" : "бота"} активно`}
+                    {appMode === "single" ? getBot(singleBotId)?.name : `${activeBots.length} бота`}
                     {safetyOff && " · Без фильтра"}
                   </span>
                   <span className={`text-[10px] font-mono ${t.textFaint}`}>{input.length}</span>
@@ -523,11 +446,10 @@ export default function MultiChat() {
             </div>
           </>
         ) : (
-          /* Image section */
           <div className="flex-1 flex flex-col items-center justify-center px-6 py-12">
             <div className="w-full max-w-xl animate-fade-in">
               <h2 className={`text-2xl font-light mb-2 ${t.text}`}>Генерация изображений</h2>
-              <p className={`text-sm mb-8 ${t.textMuted}`}>Опишите изображение — боты создадут его для вас</p>
+              <p className={`text-sm mb-8 ${t.textMuted}`}>Опишите изображение — ИИ создаст его для вас</p>
               <div className={`border rounded-xl overflow-hidden mb-4 ${t.borderMid} ${t.inputBg}`}>
                 <textarea value={imagePrompt} onChange={e => setImagePrompt(e.target.value)}
                   placeholder="Опишите изображение подробно..."
@@ -542,8 +464,7 @@ export default function MultiChat() {
                   </div>
                   <button disabled={!imagePrompt.trim()}
                     className={`flex items-center gap-2 text-xs px-4 py-2 rounded disabled:opacity-20 transition-all ${t.btnPrimary}`}>
-                    <Icon name="Sparkles" size={13} />
-                    Создать
+                    <Icon name="Sparkles" size={13} />Создать
                   </button>
                 </div>
               </div>
@@ -558,17 +479,17 @@ export default function MultiChat() {
         )}
       </div>
 
-      {/* Settings modal */}
+      {/* ── Settings ── */}
       {showSettings && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center" onClick={() => setShowSettings(false)}>
-          <div className={`rounded-xl border p-8 w-full max-w-md animate-slide-up shadow-2xl ${t.settingsBg}`} onClick={e => e.stopPropagation()}>
+          <div className={`rounded-xl border p-8 w-full max-w-md animate-slide-up shadow-2xl ${isDark ? "bg-[#111] border-white/10" : "bg-white border-black/10"}`}
+            onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-6">
               <h3 className={`font-medium ${t.text}`}>Настройки</h3>
               <button onClick={() => setShowSettings(false)} className={t.textMuted}><Icon name="X" size={16} /></button>
             </div>
-
             <div className="flex flex-col gap-5">
-              {/* Theme */}
+
               <div className="flex items-center justify-between">
                 <div>
                   <div className={`text-sm font-medium ${t.text}`}>Тёмная тема</div>
@@ -576,45 +497,44 @@ export default function MultiChat() {
                 </div>
                 <button onClick={() => setTheme(isDark ? "light" : "dark")}
                   className={`w-11 h-6 rounded-full transition-all relative ${isDark ? t.toggleOn : t.toggleOff}`}>
-                  <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full transition-all shadow ${isDark ? "left-[22px]" : "left-0.5"}`}
-                    style={{ backgroundColor: isDark ? "#000" : "#fff" }} />
+                  <div className="absolute top-0.5 w-5 h-5 rounded-full shadow transition-all"
+                    style={{ left: isDark ? 22 : 2, backgroundColor: isDark ? "#000" : "#fff" }} />
                 </button>
               </div>
 
               <div className={`h-px ${t.divider}`} />
 
-              {/* Safety */}
               <div className="flex items-center justify-between">
                 <div>
-                  <div className={`text-sm font-medium ${t.text}`}>Фильтр безопасности</div>
-                  <div className={`text-xs mt-0.5 ${t.textMuted}`}>Включить цензуру</div>
+                  <div className={`text-sm font-medium ${t.text}`}>Без цензуры</div>
+                  <div className={`text-xs mt-0.5 ${t.textMuted}`}>Отключить фильтр безопасности</div>
                 </div>
                 <button onClick={() => setSafetyOff(!safetyOff)}
-                  className={`w-11 h-6 rounded-full transition-all relative ${!safetyOff ? t.toggleOn : t.toggleOff}`}>
-                  <div className={`absolute top-0.5 w-5 h-5 rounded-full transition-all shadow ${!safetyOff ? "left-[22px]" : "left-0.5"}`}
-                    style={{ backgroundColor: isDark ? "#000" : "#fff" }} />
+                  className={`w-11 h-6 rounded-full transition-all relative ${safetyOff ? t.toggleOn : t.toggleOff}`}>
+                  <div className="absolute top-0.5 w-5 h-5 rounded-full shadow transition-all"
+                    style={{ left: safetyOff ? 22 : 2, backgroundColor: isDark ? "#000" : "#fff" }} />
                 </button>
               </div>
 
               <div className={`h-px ${t.divider}`} />
 
-              {/* Memory */}
               <div>
                 <div className={`text-sm font-medium mb-1 ${t.text}`}>Токены памяти</div>
-                <div className={`text-xs mb-3 ${t.textMuted}`}>Сколько контекста помнят боты</div>
+                <div className={`text-xs mb-3 ${t.textMuted}`}>Контекст диалога</div>
                 <input type="range" min={4000} max={200000} step={4000} value={memoryTokens}
                   onChange={e => setMemoryTokens(Number(e.target.value))}
                   className="w-full accent-black" />
                 <div className={`flex justify-between text-[10px] mt-1 font-mono ${t.textFaint}`}>
-                  <span>4k</span><span className="font-medium">{(memoryTokens / 1000).toFixed(0)}k</span><span>200k</span>
+                  <span>4k</span>
+                  <span className="font-medium">{(memoryTokens / 1000).toFixed(0)}k</span>
+                  <span>200k</span>
                 </div>
               </div>
 
               <div className={`h-px ${t.divider}`} />
 
-              {/* Mode */}
               <div>
-                <div className={`text-sm font-medium mb-3 ${t.text}`}>Режим ответа (много ботов)</div>
+                <div className={`text-sm font-medium mb-3 ${t.text}`}>Режим (много ботов)</div>
                 <div className="flex gap-2">
                   {(["separate", "combined"] as const).map(m => (
                     <button key={m} onClick={() => setChatMode(m)}
