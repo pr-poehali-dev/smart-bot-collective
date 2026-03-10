@@ -1,31 +1,19 @@
 {
   "tests": [
     {
-      "name": "POST request with valid messages and new session",
+      "name": "Chat with ChatGPT",
       "method": "POST",
       "path": "/",
       "body": {
-        "messages": [
-          {
-            "role": "user",
-            "content": "Какие материалы лучше использовать для отделки ванной комнаты?"
-          }
-        ]
+        "botId": "chatgpt",
+        "messages": [{"role": "user", "content": "Скажи привет одним словом"}]
       },
-      "expectedStatus": 200
+      "expectedStatus": 200,
+      "expectedBody": {"botId": "chatgpt"},
+      "bodyMatcher": "partial"
     },
     {
-      "name": "Load chat history for existing session",
-      "method": "POST",
-      "path": "/",
-      "body": {
-        "sessionId": "test-session-123",
-        "loadHistory": true
-      },
-      "expectedStatus": 200
-    },
-    {
-      "name": "OPTIONS request for CORS",
+      "name": "OPTIONS CORS",
       "method": "OPTIONS",
       "path": "/",
       "expectedStatus": 200

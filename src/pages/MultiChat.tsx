@@ -1,5 +1,18 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import Icon from "@/components/ui/icon";
+
+const AI_CHAT_URL = "https://functions.poehali.dev/bead5363-79de-43a3-8d46-8c1cc2b00ad4";
+
+async function askBot(botId: string, messages: { role: string; content: string }[], safetyOff: boolean): Promise<string> {
+  const res = await fetch(AI_CHAT_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ botId, messages, safetyOff }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `Ошибка ${res.status}`);
+  return data.text;
+}
 
 const BOTS = [
   { id: "deepseek", name: "DeepSeek", company: "DeepSeek AI", avatar: "🧠" },
@@ -145,43 +158,83 @@ export default function MultiChat() {
     );
   };
 
+  const abortControllers = useRef<AbortController[]>([]);
+
   const cancelGeneration = () => {
     pendingTimers.current.forEach(clearTimeout);
     pendingTimers.current = [];
+    abortControllers.current.forEach(c => c.abort());
+    abortControllers.current = [];
     setIsThinking(false);
   };
 
-  const sendMessage = () => {
+  const sendMessage = useCallback(async () => {
     if (!input.trim() || isThinking) return;
+
+    const userText = input.trim();
     const userMsg: Message = {
       id: Date.now().toString(),
       role: "user",
-      text: input.trim(),
+      text: userText,
       timestamp: new Date(),
     };
-    setMessages(prev => [...prev, userMsg]);
+
+    setMessages(prev => {
+      const updated = [...prev, userMsg];
+      return updated;
+    });
     setInput("");
     setIsThinking(true);
+    abortControllers.current = [];
 
     const botsToUse = appMode === "single" ? [singleBotId] : activeBots;
 
+    // Собираем историю для контекста (последние 20 сообщений)
+    const historyForApi = messages.slice(-20).map(m => ({
+      role: m.role === "user" ? "user" : "assistant",
+      content: m.text,
+    }));
+    historyForApi.push({ role: "user", content: userText });
+
+    let completed = 0;
+
     botsToUse.forEach((botId, idx) => {
-      const delay = appMode === "single" ? 800 : chatMode === "separate" ? idx * 700 + 500 : 1200;
-      const timer = setTimeout(() => {
-        const responses = DEMO_RESPONSES[botId] || ["Ответ обрабатывается..."];
-        const text = responses[Math.floor(Math.random() * responses.length)];
-        setMessages(prev => [...prev, {
-          id: `${Date.now()}-${botId}`,
-          role: "bot",
-          text,
-          botId,
-          timestamp: new Date(),
-        }]);
-        if (idx === botsToUse.length - 1) setIsThinking(false);
+      const delay = appMode === "single" ? 0 : chatMode === "separate" ? idx * 200 : 0;
+      const ac = new AbortController();
+      abortControllers.current.push(ac);
+
+      const timer = setTimeout(async () => {
+        try {
+          const text = await askBot(botId, historyForApi, safetyOff);
+          if (!ac.signal.aborted) {
+            setMessages(prev => [...prev, {
+              id: `${Date.now()}-${botId}-${Math.random()}`,
+              role: "bot",
+              text,
+              botId,
+              timestamp: new Date(),
+            }]);
+          }
+        } catch (err: unknown) {
+          if (!ac.signal.aborted) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            setMessages(prev => [...prev, {
+              id: `${Date.now()}-${botId}-err`,
+              role: "bot",
+              text: `⚠️ Ошибка: ${errMsg}`,
+              botId,
+              timestamp: new Date(),
+            }]);
+          }
+        } finally {
+          completed++;
+          if (completed === botsToUse.length) setIsThinking(false);
+        }
       }, delay);
       pendingTimers.current.push(timer);
     });
-  };
+   
+  }, [input, isThinking, appMode, singleBotId, activeBots, chatMode, safetyOff, messages]);
 
   const clearChat = () => { setMessages([]); cancelGeneration(); };
   const getBot = (id: string) => BOTS.find(b => b.id === id);

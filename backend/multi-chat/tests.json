@@ -1,0 +1,16 @@
+{
+  "tests": [
+    {
+      "name": "Send message to chatgpt",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "botId": "chatgpt",
+        "messages": [{"role": "user", "content": "Скажи 'привет' одним словом"}]
+      },
+      "expectedStatus": 200,
+      "expectedBody": {"botId": "chatgpt"},
+      "bodyMatcher": "partial"
+    }
+  ]
+}
