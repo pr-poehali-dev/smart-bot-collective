@@ -56,6 +56,7 @@ import YukassaCabinet from "./pages/YukassaCabinet";
 import OfficeCalc from "./pages/OfficeCalc";
 import CityLanding from "./pages/CityLanding";
 import NotFound from "./pages/NotFound";
+import MultiChat from "./pages/MultiChat";
 import CookieBanner from "./components/CookieBanner";
 import ChatWidget from "./components/ChatWidget";
 import InstallPWABanner from "./components/pwa/InstallPWABanner";
@@ -77,6 +78,7 @@ const App = () => {
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/ai-chat" element={<AIChat />} />
+            <Route path="/chat" element={<MultiChat />} />
             <Route path="/designer" element={<Designer />} />
             <Route path="/designer/:stageId" element={<DesignerStage />} />
             <Route path="/calculator" element={<Calculator />} />
