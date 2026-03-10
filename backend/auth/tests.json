@@ -1,0 +1,135 @@
+{
+  "tests": [
+    {
+      "name": "OPTIONS preflight",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Register new user",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "register",
+        "email": "test_auth_user@example.com",
+        "password": "test123456",
+        "name": "Тест Юзер",
+        "phone": "+70000000001",
+        "user_type": "customer"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "success": true
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Login with registered user",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "login",
+        "email": "test_auth_user@example.com",
+        "password": "test123456"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "success": true
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Login with wrong password",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "login",
+        "email": "test_auth_user@example.com",
+        "password": "wrongpass"
+      },
+      "expectedStatus": 401,
+      "expectedBody": {
+        "error": "string"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Register duplicate email",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "register",
+        "email": "test_auth_user@example.com",
+        "password": "test123456",
+        "name": "Другой Юзер"
+      },
+      "expectedStatus": 409,
+      "expectedBody": {
+        "error": "string"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Get non-existent user",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "get_user",
+        "phone": "+79999999999"
+      },
+      "expectedStatus": 404,
+      "expectedBody": {
+        "error": "User not found"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Get masters list",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "get_masters_list"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "masters": []
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Get transactions - missing contractor_id",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "get_transactions"
+      },
+      "expectedStatus": 400,
+      "expectedBody": {
+        "error": "string"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Create transaction - bonus 0% for new master",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "create_transaction",
+        "contractor_id": 9999,
+        "contract_amount": 100000,
+        "customer_name": "Тест Заказчик",
+        "work_description": "Тестовые работы"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "success": true,
+        "is_bonus": true,
+        "commission_pct": 0.0,
+        "commission_amount": 0.0,
+        "payout_amount": 100000.0
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

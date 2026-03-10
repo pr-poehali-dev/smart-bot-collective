@@ -1,0 +1,34 @@
+{
+  "tests": [
+    {
+      "name": "POST request with valid messages and new session",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Какие материалы лучше использовать для отделки ванной комнаты?"
+          }
+        ]
+      },
+      "expectedStatus": 200
+    },
+    {
+      "name": "Load chat history for existing session",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "sessionId": "test-session-123",
+        "loadHistory": true
+      },
+      "expectedStatus": 200
+    },
+    {
+      "name": "OPTIONS request for CORS",
+      "method": "OPTIONS",
+      "path": "/",
+      "expectedStatus": 200
+    }
+  ]
+}

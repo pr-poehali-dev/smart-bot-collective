@@ -1,0 +1,38 @@
+{
+  "tests": [
+    {
+      "name": "POST — создание заявки",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "company_name": "СтройМастер ООО",
+        "contact_name": "Иван Петров",
+        "phone": "+7 900 123-45-67",
+        "email": "ivan@stroymaster.ru",
+        "partner_type": "contractor",
+        "region": "Москва",
+        "comment": "Специализируемся на отделке"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {"ok": true},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "GET — список заявок (admin)",
+      "method": "GET",
+      "path": "/",
+      "headers": {"X-Admin-Token": "admin2025"},
+      "expectedStatus": 200,
+      "expectedBody": {"total": 0},
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "GET — без токена → 403",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 403,
+      "expectedBody": {"error": "Forbidden"},
+      "bodyMatcher": "partial"
+    }
+  ]
+}
